@@ -1,0 +1,349 @@
+/* ---------- Base & variables (light theme) ---------- */
+:root{
+    --bg:#ffffff;
+    --card:#ffffff;
+    --border:#e6e8ee;
+    --text:#0b1220;
+    --muted:#5b6775;
+  
+    /* calendar semantics (dark hues as requested earlier) */
+    --avail-bg:#1e40af;       /* dark blue */
+    --avail-border:#1e3a8a;   /* darker blue border */
+    --booked-bg:#991b1b;      /* dark red */
+    --booked-border:#7f1d1d;  /* darker red border */
+    --today-ring:#facc15;     /* yellow */
+  
+    /* feedback used in admin messages */
+    --ok-bg:#1e40af;
+    --ok-tint:#e8ecff;        /* light text on dark blue */
+    --bad-bg:#991b1b;
+    --bad-tint:#ffecec;       /* light text on dark red */
+  
+    --shadow: 0 2px 24px rgba(5,16,38,.06);
+    --shadow-lg: 0 10px 30px rgba(5,16,38,.12);
+  }
+  
+  *{box-sizing:border-box}
+  html,body,#root{height:100%}
+  body{
+    margin:0;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    background:var(--bg);
+    color:var(--text);
+  }
+  
+  /* ---------- Small utilities ---------- */
+  .border{ border:1px solid var(--border); }
+  .p-2{ padding:.5rem; } .p-3{ padding:.75rem; } .p-6{ padding:1.5rem; }
+  .text-sm{ font-size:.875rem; } .text-xl{ font-size:1.25rem; }
+  .font-bold{ font-weight:700; } .font-semibold{ font-weight:600; }
+  .flex{ display:flex; } .justify-between{ justify-content:space-between; }
+  .space-y-4 > * + * { margin-top:1rem; }
+  .space-x-3 > * + * { margin-left:.75rem; }
+  .max-w-sm{ max-width:28rem; }
+  .mx-auto{ margin-left:auto; margin-right:auto; }
+  .w-full{ width:100%; }
+  .w-24{ width:6rem; } .w-16{ width:4rem; }
+  .gap-2{ gap:.5rem; } .items-center{ align-items:center; }
+  
+  /* ---------- App shell & header ---------- */
+  .appbar{
+    position: sticky; top: 0; z-index: 5;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+  .appbar__inner{
+    max-width: 1200px; margin: 0 auto; padding: 12px 20px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .brand{ font-weight:800; letter-spacing:.2px; }
+  .shell{ max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  
+  /* ---------- Pretty buttons & inputs ---------- */
+  .btn{
+    border:1px solid var(--border);
+    background:#fff; color:#0b1220;
+    padding:.55rem .85rem; border-radius:10px; cursor:pointer;
+    transition: box-shadow .15s ease, transform .05s ease, background .15s ease;
+  }
+  .btn:hover{ box-shadow: var(--shadow); transform: translateY(-1px); }
+  .btn:active{ transform: translateY(0); }
+  .btn-primary{ background:#111; color:#fff; border-color:#111; }
+  .btn-danger{ background:#7f1d1d; color:#fff; border-color:#7f1d1d; }
+  
+  .input, .select{
+    width:100%;
+    border:1px solid var(--border); border-radius:10px;
+    padding:.55rem .7rem; background:#fff; color:var(--text);
+    outline:none; transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  .input:focus, .select:focus{ box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:#2563eb; }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .label{ font-weight:600; color:var(--muted); }
+  
+  /* ---------- Tabs (admin top) ---------- */
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap;
+    background:#f6f8fb; padding:6px; border-radius:12px;
+    border:1px solid var(--border);
+  }
+  .tab{
+    padding:.45rem .9rem; border-radius:10px; font-weight:700;
+    color:#334155; background:transparent; border:none; cursor:pointer;
+  }
+  .tab:hover{ background:#eef2f7; }
+  .tab.is-active{ background:#fff; box-shadow: var(--shadow); color:#111; }
+  
+  /* ---------- Card & panel ---------- */
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    box-shadow: var(--shadow); padding:16px;
+  }
+  .card--lg{ padding:20px; box-shadow: var(--shadow-lg); }
+  .hstack{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grid{ display:grid; gap:12px; }
+  .grid-2{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 860px){
+    .grid-2, .grid-3{ grid-template-columns: 1fr; }
+  }
+  
+  /* ---------- Table (owners list) ---------- */
+  .table{ width:100%; border-collapse:separate; border-spacing:0; }
+  .table thead th{
+    text-align:left; font-weight:700; color:var(--muted);
+    border-bottom:1px solid var(--border); padding:12px 14px;
+  }
+  .table tbody td{ padding:12px 14px; border-bottom:1px solid var(--border); }
+  .table tbody tr:hover{ background:#fbfdff; }
+  .table .actions{ display:flex; gap:8px; }
+  
+  /* ---------- Auth (login) ---------- */
+/* ===== Auth / Login (stunning, with color shades & animations) ===== */
+.auth{
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* base gradient wash */
+  .auth__bg{
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(1200px 500px at 50% -260px, rgba(29,78,216,.12), transparent 70%),
+      radial-gradient(900px 400px at 90% 120%, rgba(225,29,72,.09), transparent 70%),
+      linear-gradient(#fbfdff, #ffffff);
+    pointer-events: none;
+  }
+  
+  /* floating color blobs */
+  .auth__blob{
+    position: fixed; width: 54vmin; height: 54vmin; border-radius: 999px; filter: blur(30px);
+    opacity: .22; mix-blend-mode: multiply; pointer-events: none;
+    animation: float 16s ease-in-out infinite;
+  }
+  .auth__blob--one{ left: -8vmin; top: 14vmin; background: #60a5fa; animation-delay: 0s; }
+  .auth__blob--two{ right: -10vmin; bottom: -6vmin; background: #f472b6; animation-delay: 2s; }
+  @keyframes float{
+    0%{ transform: translateY(0) translateX(0) scale(1); }
+    50%{ transform: translateY(-12px) translateX(8px) scale(1.04); }
+    100%{ transform: translateY(0) translateX(0) scale(1); }
+  }
+  
+  /* frosted-glass card */
+  .login-card{
+    width: min(520px, 92vw);
+    background: rgba(255,255,255,.9);
+    border: 1px solid rgba(226,232,240,.9);
+    border-radius: 18px;
+    padding: 26px;
+    box-shadow:
+      0 35px 120px rgba(2,6,23,.10),
+      0 3px 16px rgba(2,6,23,.07);
+    animation: popin .55s ease-out;
+    backdrop-filter: blur(6px);
+  }
+  @keyframes popin{
+    from{ transform: translateY(16px) scale(.985); opacity: 0; }
+    to{   transform: none; opacity: 1; }
+  }
+  
+  /* shake when errors */
+  .login-card--shake{ animation: shake .42s linear; }
+  @keyframes shake{
+    15%{ transform: translateX(-8px) }
+    30%{ transform: translateX(8px) }
+    45%{ transform: translateX(-5px) }
+    60%{ transform: translateX(5px) }
+    75%{ transform: translateX(-2px) }
+    100%{ transform: none }
+  }
+  
+  .login-title{
+    margin: 0 0 14px;
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: .2px;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  
+  /* fancy inputs */
+  .input.input--fancy{
+    width: 100%;
+    border: 1px solid var(--border);
+    padding: .8rem .95rem;
+    border-radius: 12px;
+    outline: none;
+    background: #fff;
+    transition: box-shadow .15s, border-color .15s, transform .06s;
+  }
+  .input.input--fancy:focus{
+    border-color: #1e3a8a;
+    box-shadow:
+      0 0 0 4px rgba(37,99,235,.12),
+      0 6px 20px rgba(2,6,23,.06);
+  }
+  
+  /* gradient button w/ sheen */
+  .btn-gradient{
+    width: 100%;
+    border: none;
+    color: #fff;
+    height: 46px;
+    border-radius: 12px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #111827, #1f2937);
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-gradient:hover .btn-sheen::after{
+    transform: translateX(120%);
+  }
+  .btn-sheen{
+    position: relative; z-index: 1; font-weight: 700; letter-spacing: .2px;
+  }
+  .btn-sheen::after{
+    content:"";
+    position: absolute; inset: -200% -40%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+    transform: translateX(-120%);
+    transition: transform .8s ease;
+  }
+  
+  /* button loading spinner */
+  .is-loading{ pointer-events: none; opacity: .95; }
+  .dots::after{
+    content:"";
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 3px solid currentColor; border-right-color: transparent;
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  
+  /* floating toast messages */
+  .toast{
+    position: fixed; top: 18px; right: 18px;
+    padding: .7rem .9rem;
+    border-radius: 12px;
+    font-weight: 700;
+    border: 1px solid;
+    box-shadow: 0 8px 26px rgba(2,6,23,.12);
+    animation: slideIn .4s ease, fadeOut .3s ease 5s forwards;
+    z-index: 50;
+  }
+  .toast--err{
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #9f1239;
+  }
+  .toast--ok{
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+    color: #065f46;
+  }
+  @keyframes slideIn{
+    from{ transform: translateY(-6px); opacity: 0; }
+    to{ transform: none; opacity: 1; }
+  }
+  @keyframes fadeOut{
+    to{ opacity: 0; transform: translateY(-6px); }
+  }  
+  
+  /* ---------- Calendar ---------- */
+  .cal{ position:relative; display:grid; gap:16px; }
+  .cal__legend{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chip{
+    padding:.25rem .5rem; border:1px solid var(--border); border-radius:999px;
+    color:var(--muted); background:var(--card);
+  }
+  .chip--avail{ color:var(--avail-border); border-color:var(--avail-border); }
+  .chip--booked{ color:var(--booked-border); border-color:var(--booked-border); }
+  .chip--today{ color:var(--today-ring); border-color:var(--today-ring); }
+  
+  .cal__saving{
+    position:sticky; top:0; align-self:start;
+    background:rgba(255,255,255,.8);
+    backdrop-filter: blur(6px); padding:.35rem .6rem; border-radius:8px;
+    width:max-content; z-index:2; border:1px dashed var(--border);
+  }
+  
+  .cal__weekday{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:12px;
+    color:var(--muted); font-weight:600; letter-spacing:.02em;
+  }
+  .wk{ text-align:left; padding-left:.125rem; }
+  
+  .cal__grid{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:12px;
+  }
+  
+  /* Day card */
+  .day{
+    height:100px; padding:12px; text-align:left;
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    box-shadow: var(--shadow);
+    display:flex; flex-direction:column; justify-content:center;
+    transition: transform .12s ease, box-shadow .12s ease, background .12s ease, border-color .12s ease;
+    cursor:pointer;
+  }
+  .day:hover{ transform: translateY(-2px); }
+  .day:focus{ outline:none; box-shadow:0 0 0 2px var(--avail-border) inset; }
+  
+  .day--avail{
+    background: var(--avail-bg);
+    border-color: var(--avail-border);
+    color:#fff;
+  }
+  .day--booked{
+    background: var(--booked-bg);
+    border-color: var(--booked-border);
+    color:#fff;
+  }
+  .day--today{ box-shadow: 0 0 0 2px var(--today-ring) inset, var(--shadow); }
+  
+  .day--disabled,
+  .day:disabled{
+    cursor:not-allowed; opacity:1; pointer-events:none; transform:none;
+  }
+  
+  .day__date{ font-weight:700; font-size:1.125rem; margin-bottom:.25rem; }
+  .day__status{ font-size:.875rem; opacity:.95; }
+  
+  @media (max-width: 780px){
+    .day{ height:86px; padding:10px; }
+    .day__date{ font-size:1rem; }
+  }
+  
+  /* Modal */
+  .modal{
+    position: fixed; inset: 0; background: rgba(0,0,0,.35);
+    display:flex; align-items:center; justify-content:center; padding:1rem; z-index:1000;
+  }
+  .modal-card{
+    background:#fff; color:#111; border-radius:12px; width:min(520px, 92vw);
+    box-shadow: var(--shadow-lg); padding:1rem;
+  }
+  
