@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from pydantic import BaseModel
-from sqlalchemy import create_engine, ForeignKey, String, Boolean, Date, func, select, and_, or_, text
+from sqlalchemy import create_engine, ForeignKey, String, Boolean, Date, func, select, and_, or_, text, exists
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 # --------------------- App (CREATE FIRST) ---------------------
@@ -347,3 +347,28 @@ def admin_create_owner(payload: AdminCreateOwnerIn, db: Session = Depends(get_db
     )
     db.add(fh); db.commit(); db.refresh(fh)
     return fh
+
+@app.get("/farmhouses/available", response_model=List[FarmhouseOut])
+def available_farmhouses(
+    date: date,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user)
+):
+    # A farmhouse is "available" if there is NOT a booked row for that date.
+    booked_exists = exists(
+        select(DayStatus.id).where(
+            and_(
+                DayStatus.farmhouse_id == Farmhouse.id,
+                DayStatus.day == date,
+                DayStatus.is_booked == True
+            )
+        )
+    )
+    q = select(Farmhouse).where(~booked_exists)
+
+    # Owners only see their own farmhouses
+    if current.role == "owner":
+        q = q.where(Farmhouse.owner_id == current.id)
+
+    rows = db.scalars(q).all()
+    return rows

@@ -455,8 +455,7 @@ function OwnerPage() {
   );
 }
 
-/* ---------- Admin page with tabs (polished) ---------- */
-/* ---------- Admin page with filters (calendar) ---------- */
+
 function AdminPage() {
     const [tab, setTab] = useState("calendar");
     const [farms, setFarms] = useState([]);
@@ -466,11 +465,15 @@ function AdminPage() {
     const [month, setMonth] = useState(today.getMonth() + 1);
   
     // NEW: filters
-    const [loc, setLoc] = useState("");       // exact match; "" = All
+    const [loc, setLoc] = useState("");        // exact match; "" = All
     const [sizeMin, setSizeMin] = useState(""); // numeric string
     const [sizeMax, setSizeMax] = useState(""); // numeric string
+    const [availDate, setAvailDate] = useState(""); // YYYY-MM-DD from <input type="date">
   
-    useEffect(()=>{ apiFetch("/me/farmhouses").then(setFarms); }, []);
+    // Set of farmhouse IDs available on the chosen date (null = no date filter)
+    const [availSet, setAvailSet] = useState(null);
+  
+    useEffect(() => { apiFetch("/me/farmhouses").then(setFarms); }, []);
   
     // Distinct locations for dropdown
     const locations = useMemo(() => {
@@ -479,25 +482,41 @@ function AdminPage() {
       return Array.from(s).sort((a,b)=>a.localeCompare(b));
     }, [farms]);
   
-    // Apply filters
+    // When date changes, fetch availability once
+    useEffect(() => {
+      if (!availDate) { setAvailSet(null); return; }
+      apiFetch(`/farmhouses/available?date=${availDate}`)
+        .then(rows => setAvailSet(new Set(rows.map(r => r.id))))
+        .catch(() => setAvailSet(new Set())); // empty on error
+    }, [availDate]);
+  
+    // Apply filters (availability -> location -> size)
     const filtered = useMemo(() => {
+      const base = availSet == null ? farms : farms.filter(f => availSet.has(f.id));
       const min = sizeMin === "" ? -Infinity : Number(sizeMin);
       const max = sizeMax === "" ?  Infinity : Number(sizeMax);
-      return farms.filter(f => {
+      return base.filter(f => {
         const sizeVal = Number(f.size ?? 0);
         const okLoc = !loc || f.location === loc;
         const okSize = sizeVal >= min && sizeVal <= max;
         return okLoc && okSize;
       });
-    }, [farms, loc, sizeMin, sizeMax]);
+    }, [farms, availSet, loc, sizeMin, sizeMax]);
   
-    // Pick first visible farm if current one is filtered out
+    // Keep selection valid with current filter result
     useEffect(() => {
       if (filtered.length === 0) { setSel(null); return; }
       if (sel == null || !filtered.find(f => f.id === sel)) {
         setSel(filtered[0].id);
       }
     }, [filtered]);
+  
+    const clearFilters = () => {
+      setLoc("");
+      setSizeMin("");
+      setSizeMax("");
+      setAvailDate("");
+    };
   
     return (
       <>
@@ -511,11 +530,21 @@ function AdminPage() {
   
         {tab==="calendar" && (
           <div className="shell">
-            <h1 className="text-xl font-bold">Admin — All Farmhouses (view only)</h1>
+            <h1 className="text-xl font-bold">Farmhouses</h1>
   
             {/* Filters */}
             <div className="hstack" style={{gap:12, flexWrap:"wrap", marginTop:8, alignItems:"center"}}>
               <span className="text-sm" style={{opacity:.75}}>Filters:</span>
+  
+              {/* NEW: availability date */}
+              <input
+                className="input"
+                type="date"
+                value={availDate}
+                onChange={(e)=>setAvailDate(e.target.value)}
+                title="Show only farmhouses available on this date"
+                style={{width:180}}
+              />
   
               <select className="select" value={loc} onChange={(e)=>setLoc(e.target.value)} title="Location">
                 <option value="">All locations</option>
@@ -527,12 +556,12 @@ function AdminPage() {
               <input className="input" style={{width:110}} type="number" min="0" placeholder="Max size"
                      value={sizeMax} onChange={e=>setSizeMax(e.target.value)} />
   
-              <button className="btn" onClick={() => { setLoc(""); setSizeMin(""); setSizeMax(""); }}>
-                Clear filters
-              </button>
+              <button className="btn" onClick={clearFilters}>Clear filters</button>
   
               <span className="text-sm" style={{opacity:.65}}>
-                Showing {filtered.length} of {farms.length}
+                {availDate
+                  ? <>Available on <b>{availDate}</b>: {filtered.length} of {farms.length}</>
+                  : <>Showing {filtered.length} of {farms.length}</>}
               </span>
             </div>
   
@@ -545,7 +574,7 @@ function AdminPage() {
                   </option>
                 ))}
               </select>
-              <input className="input" style={{width:120}} type="number" value={year} onChange={e=>setYear(Number(e.target.value))}/>
+              <input className="input" style={{width:120}} type="number" value={year} onChange={(e)=>setYear(Number(e.target.value))}/>
               <input className="input" style={{width:90}} type="number" min={1} max={12} value={month} onChange={(e)=>setMonth(Number(e.target.value))}/>
               <span className="chip">Read-only</span>
             </div>
@@ -565,6 +594,7 @@ function AdminPage() {
       </>
     );
   }
+  
   
 /* ---------- App ---------- */
 export default function App() {
