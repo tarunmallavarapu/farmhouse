@@ -290,6 +290,7 @@ function AdminOwnersPage(){
                 <th>Owner ID</th>
                 <th>Username</th>
                 <th>Email</th>
+                <th>Phone</th> 
                 <th>Active</th>
                 <th>Farmhouses</th>
                 <th style={{width:220}}>Actions</th>
@@ -301,6 +302,7 @@ function AdminOwnersPage(){
                   <td>{r.id}</td>
                   <td>{r.username}</td>
                   <td>{r.email || "—"}</td>
+                  <td>{r.phone || "—"}</td>
                   <td>{r.is_active ? "Yes":"No"}</td>
                   <td>{r.farmhouses?.length ? r.farmhouses.map(f=>`${f.name}${f.size?` (${f.size})`:''}${f.location?` @ ${f.location}`:''}`).join(", ") : "—"}</td>
                   <td>
@@ -343,6 +345,7 @@ function AdminCreateOwnerPage(){
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [phone, setPhone] = useState("");
     const [farmhouseName, setFarmhouseName] = useState("");
     const [size, setSize] = useState("");
     const [location, setLocation] = useState("");
@@ -354,14 +357,16 @@ function AdminCreateOwnerPage(){
       setMsg(null);
   
       const sizeNum = Number(size);
-      if(!username || !password || !farmhouseName || !email || !location || !size){
-        setMsg({type:"err", text:"Please fill all required fields (Username, Email, Password, Farmhouse name, Size, Location)."});
+      if(!username || !password || !farmhouseName || !email || !location || !size || !phone){
+        setMsg({type:"err", text:"Please fill all required fields (Username, Email, Phone, Password, Farmhouse name, Size, Location)."});
         return;
       }
       if(!/^\S+@\S+\.\S+$/.test(email)){
         setMsg({type:"err", text:"Enter a valid email address."});
         return;
       }
+
+      const phoneDigits = phone.replace(/\D/g, ""); 
       if(!Number.isFinite(sizeNum) || sizeNum <= 0){
         setMsg({type:"err", text:"Size must be a positive number."});
         return;
@@ -376,10 +381,11 @@ function AdminCreateOwnerPage(){
           email,
           size: sizeNum,
           location,
+          phone, 
         };
         const fh = await apiFetch(`/admin/owners/create`, { method:"POST", body: JSON.stringify(body) });
         setMsg({type:"ok", text:`Created owner "${username}" and farmhouse "${fh.name}" (id ${fh.id}).`});
-        setUsername(""); setPassword(""); setFarmhouseName(""); setSize(""); setLocation(""); setEmail("");
+        setUsername(""); setPassword(""); setFarmhouseName(""); setSize(""); setLocation(""); setEmail(""); setPhone("");
       } catch(e){
         setMsg({type:"err", text:e.message || "Failed to create owner."});
       } finally { setBusy(false); }
@@ -396,6 +402,9 @@ function AdminCreateOwnerPage(){
             <label style={{flexBasis:"100%"}}><b>Email *</b></label>
             <input className="border p-2" required type="email" placeholder="name@example.com" value={email} onChange={e=>setEmail(e.target.value)} style={{flex:"1 1 420px"}}/>
   
+            <label style={{flexBasis:"100%"}}><b>Phone *</b></label>
+            <input className="border p-2" required placeholder="+91 98765 43210" value={phone} onChange={e=>setPhone(e.target.value)} style={{flex:"1 1 320px"}}/>
+
             <label style={{flexBasis:"100%"}}><b>Password *</b></label>
             <input className="border p-2" required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} style={{flex:"1 1 320px"}}/>
   

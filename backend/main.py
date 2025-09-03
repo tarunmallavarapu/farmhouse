@@ -50,6 +50,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String, nullable=False)  # 'owner' | 'admin'
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # NEW
     farmhouses: Mapped[List["Farmhouse"]] = relationship(back_populates="owner")
 
 class Farmhouse(Base):
@@ -112,6 +113,7 @@ class AdminCreateOwnerIn(BaseModel):
     email: str
     size: int
     location: str
+    phone: str        
 
 class FarmhouseBrief(BaseModel):
     id: int
@@ -125,8 +127,10 @@ class AdminOwnerRowOut(BaseModel):
     id: int
     username: str
     email: Optional[str] = None
+    phone: Optional[str] = None                 
     is_active: bool = True
     farmhouses: List[FarmhouseBrief] = []
+
 
 class OwnerSetActiveIn(BaseModel):
     active: bool
@@ -287,7 +291,7 @@ def admin_list_owners(db: Session = Depends(get_db), current: User = Depends(get
     for o in owners:
         fhs = db.scalars(select(Farmhouse).where(Farmhouse.owner_id == o.id)).all()
         out.append(AdminOwnerRowOut(
-            id=o.id, username=o.username, email=o.email, is_active=o.is_active,
+            id=o.id, username=o.username, email=o.email, phone=o.phone, is_active=o.is_active,
             farmhouses=[FarmhouseBrief.model_validate(fh) for fh in fhs],
         ))
     return out
@@ -322,7 +326,7 @@ def admin_create_owner(payload: AdminCreateOwnerIn, db: Session = Depends(get_db
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="Admins only")
 
-    # Uniqueness checks (username and email)
+    # Uniqueness checks
     if db.scalar(select(User).where(User.username == payload.username)) or \
        db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status_code=400, detail="User already exists")
@@ -330,12 +334,19 @@ def admin_create_owner(payload: AdminCreateOwnerIn, db: Session = Depends(get_db
     if payload.size <= 0:
         raise HTTPException(status_code=400, detail="Size must be a positive integer")
 
+    # ---- Phone validation (required here even if DB allows NULL) ----
+    phone = payload.phone.strip()
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits or len(digits) < 7 or len(digits) > 15:
+        raise HTTPException(status_code=400, detail="Enter a valid phone number (7–15 digits).")
+
     owner = User(
         username=payload.username,
         email=payload.email,
         password_hash=hash_password(payload.password),
         role="owner",
         is_active=True,
+        phone=phone,                               # NEW
     )
     db.add(owner); db.flush()
 
