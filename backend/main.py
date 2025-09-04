@@ -132,6 +132,18 @@ class AdminOwnerRowOut(BaseModel):
     farmhouses: List[FarmhouseBrief] = []
 
 
+class PagedOwnersOut(BaseModel):
+    items: List["AdminOwnerRowOut"]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+class OwnerContactUpdateIn(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
 class OwnerSetActiveIn(BaseModel):
     active: bool
 
@@ -282,19 +294,85 @@ def upsert_status(
     return
 
 # --------------------- Admin management endpoints ---------------------
-@app.get("/admin/owners", response_model=List[AdminOwnerRowOut])
-def admin_list_owners(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+@app.get("/admin/owners", response_model=PagedOwnersOut)
+def admin_list_owners(
+    page: int = 1,
+    page_size: int = 25,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="Admins only")
-    owners = db.scalars(select(User).where(User.role == "owner")).all()
-    out = []
+
+    allowed = {10, 25, 50, 75, 100}
+    if page_size not in allowed:
+        page_size = 25
+    if page < 1:
+        page = 1
+
+    total = db.scalar(select(func.count()).select_from(User).where(User.role == "owner")) or 0
+    pages = max(1, (total + page_size - 1) // page_size)
+    if total == 0:
+        return PagedOwnersOut(items=[], total=0, page=1, page_size=page_size, pages=1)
+
+    if page > pages:
+        page = pages
+
+    offset = (page - 1) * page_size
+    owners = db.scalars(
+        select(User)
+        .where(User.role == "owner")
+        .order_by(User.id.asc())
+        .offset(offset)
+        .limit(page_size)
+    ).all()
+
+    items: List[AdminOwnerRowOut] = []
     for o in owners:
         fhs = db.scalars(select(Farmhouse).where(Farmhouse.owner_id == o.id)).all()
-        out.append(AdminOwnerRowOut(
+        items.append(AdminOwnerRowOut(
             id=o.id, username=o.username, email=o.email, phone=o.phone, is_active=o.is_active,
             farmhouses=[FarmhouseBrief.model_validate(fh) for fh in fhs],
         ))
-    return out
+    return PagedOwnersOut(items=items, total=total, page=page, page_size=page_size, pages=pages)
+
+@app.patch("/admin/owners/{owner_id}/contact", status_code=204)
+def admin_update_owner_contact(
+    owner_id: int,
+    payload: OwnerContactUpdateIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    user = db.get(User, owner_id)
+    if not user or user.role != "owner":
+        raise HTTPException(status_code=404, detail="Owner not found")
+
+    if payload.email is None and payload.phone is None:
+        raise HTTPException(status_code=400, detail="Provide email and/or phone to update")
+
+    # Email uniqueness validation
+    if payload.email is not None:
+        email = payload.email.strip()
+        if email:
+            clash = db.scalar(select(User).where(and_(User.email == email, User.id != owner_id)))
+            if clash:
+                raise HTTPException(status_code=400, detail="Email already in use")
+            user.email = email
+        else:
+            user.email = None  # allow clearing if you want; remove if you don't
+
+    # Phone validation: 7–15 digits
+    if payload.phone is not None:
+        phone = payload.phone.strip()
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if phone and (len(digits) < 7 or len(digits) > 15):
+            raise HTTPException(status_code=400, detail="Enter a valid phone number (7–15 digits).")
+        user.phone = phone if phone else None
+
+    db.commit()
 
 
 @app.post("/admin/owners/{owner_id}/reset-password", status_code=204)
