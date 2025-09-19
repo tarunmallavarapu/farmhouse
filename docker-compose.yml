@@ -25,9 +25,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://postgres:postgres@db:5432/farmbooking}
       JWT_SECRET: ${JWT_SECRET:-change-me-please}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-120}
+      UPLOAD_DIR: /app/uploads
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - uploads:/app/uploads           
     networks: [appnet]
 
   web:
@@ -45,9 +48,12 @@ services:
 
 volumes:
   db_data:
-
+  uploads:  
+  
 networks:
   appnet:
     driver: bridge
+
+
 
 

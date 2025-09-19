@@ -1,8 +1,9 @@
-import os
+
+import os, uuid, pathlib
 from datetime import datetime, timedelta, date
 from typing import List, Optional
-
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
@@ -20,6 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/media", StaticFiles(directory=UPLOAD_DIR), name="media")
+
 @app.get("/health", include_in_schema=False)
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
@@ -33,7 +38,8 @@ DATABASE_URL = os.getenv(
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-please")
 JWT_ALG = "HS256"
 ACCESS_MIN = int(os.getenv("ACCESS_TOKEN_MINUTES", "120"))
-
+MAX_IMAGE_MB = int(os.getenv("MAX_IMAGE_MB", "10"))
+MAX_VIDEO_MB = int(os.getenv("MAX_VIDEO_MB", "100"))
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -64,7 +70,18 @@ class Farmhouse(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     owner: Mapped[User] = relationship(back_populates="farmhouses")
     days: Mapped[List["DayStatus"]] = relationship(back_populates="farmhouse", cascade="all, delete-orphan")
+    media: Mapped[List["MediaAsset"]] = relationship(back_populates="farmhouse", cascade="all, delete-orphan")
 
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farmhouse_id: Mapped[int] = mapped_column(ForeignKey("farmhouses.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)           # 'image'|'video'
+    filename: Mapped[str] = mapped_column(String, nullable=False)       # stored file name
+    mime_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    farmhouse: Mapped[Farmhouse] = relationship(back_populates="media")
 
 class DayStatus(Base):
     __tablename__ = "day_status"
@@ -73,6 +90,7 @@ class DayStatus(Base):
     day: Mapped[date] = mapped_column(Date, nullable=False)
     is_booked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     note: Mapped[Optional[str]]
+    admin_booked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
     farmhouse: Mapped[Farmhouse] = relationship(back_populates="days")
 
@@ -82,6 +100,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     role: str
     email: str
+    username: str 
 
 class FarmhouseIn(BaseModel):
     name: str
@@ -105,6 +124,7 @@ class DayStatusOut(BaseModel):
     day: date
     is_booked: bool
     note: Optional[str] = None
+    admin_booked: bool = False
 
 class AdminCreateOwnerIn(BaseModel):
     username: str
@@ -130,7 +150,17 @@ class AdminOwnerRowOut(BaseModel):
     phone: Optional[str] = None                 
     is_active: bool = True
     farmhouses: List[FarmhouseBrief] = []
-
+    
+class MediaOut(BaseModel):
+    id: int
+    farmhouse_id: int
+    kind: str
+    url: str
+    mime_type: str
+    size_bytes: Optional[int] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 class PagedOwnersOut(BaseModel):
     items: List["AdminOwnerRowOut"]
@@ -193,6 +223,20 @@ def get_current_user(
         raise HTTPException(status_code=403, detail="Account disabled")
     return user
 
+class MeOut(BaseModel):
+    id: int
+    username: str
+    email: str | None
+    role: str
+
+@app.get("/me", response_model=MeOut)
+def me(current: User = Depends(get_current_user)):
+    return MeOut(
+        id=current.id,
+        username=current.username,
+        email=current.email,
+        role=current.role,
+    )
 # --------------------- Startup ---------------------
 @app.on_event("startup")
 def _init():
@@ -211,8 +255,15 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     if user.role != "admin" and not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
     token = create_access_token(sub=user.email or user.username, role=user.role)
-    return TokenOut(access_token=token, role=user.role, email=user.email or user.username)
+    return TokenOut(access_token=token, role=user.role, email=user.email or user.username, username=user.username)
 
+def _media_url(fid: int, filename: str) -> str:
+    return f"/media/farmhouse_{fid}/{filename}"
+
+@app.on_event("startup")
+def _init():
+    Base.metadata.create_all(engine)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --------------------- Farmhouse endpoints ---------------------
 @app.get("/me/farmhouses", response_model=List[FarmhouseOut])
@@ -261,7 +312,7 @@ def get_status(
             and_(DayStatus.farmhouse_id == fid, DayStatus.day >= start, DayStatus.day <= end)
         ).order_by(DayStatus.day)
     ).all()
-    return [DayStatusOut(day=r.day, is_booked=r.is_booked, note=r.note) for r in rows]
+    return [DayStatusOut(day=r.day, is_booked=r.is_booked, note=r.note, admin_booked=r.admin_booked) for r in rows]
 
 @app.put("/farmhouses/{fid}/status", status_code=204)
 def upsert_status(
@@ -274,22 +325,39 @@ def upsert_status(
     if not fh:
         raise HTTPException(status_code=404, detail="Farmhouse not found")
 
-    # Owners only for their own farmhouse
-    if current.role != "owner" or fh.owner_id != current.id:
-        raise HTTPException(status_code=403, detail="Owners only")
+    if current.role == "owner":
+        if fh.owner_id != current.id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif current.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     today = date.today()
     for c in changes:
         if c.day < today:
             raise HTTPException(status_code=400, detail="Cannot modify past dates")
         existing = db.scalar(
-            select(DayStatus).where(and_(DayStatus.farmhouse_id == fid, DayStatus.day == c.day))
+             select(DayStatus).where(and_(DayStatus.farmhouse_id == fid, DayStatus.day == c.day))
         )
+        if current.role == "owner" and existing and existing.admin_booked:
+            raise HTTPException(status_code=403, detail="This date is locked by admin.")
+
         if existing:
             existing.is_booked = c.is_booked
             existing.note = c.note
+
+            if current.role == "admin":
+                existing.admin_booked = bool(c.is_booked)
+            else:
+                # Owner changes always clear the admin lock (but only possible if not locked)
+                existing.admin_booked = False
         else:
-            db.add(DayStatus(farmhouse_id=fid, day=c.day, is_booked=c.is_booked, note=c.note))
+            db.add(DayStatus(
+                farmhouse_id=fid,
+                day=c.day,
+                is_booked=c.is_booked,
+                note=c.note,
+                admin_booked=bool(c.is_booked) if current.role == "admin" else False
+            ))
     db.commit()
     return
 
@@ -461,3 +529,126 @@ def available_farmhouses(
 
     rows = db.scalars(q).all()
     return rows
+
+# --------------------- Media endpoints ---------------------
+@app.get("/farmhouses/{fid}/media", response_model=List[MediaOut])
+def list_media(
+    fid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    fh = db.get(Farmhouse, fid)
+    if not fh:
+        raise HTTPException(status_code=404, detail="Farmhouse not found")
+    if current.role == "owner" and fh.owner_id != current.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    rows = db.scalars(select(MediaAsset).where(MediaAsset.farmhouse_id == fid).order_by(MediaAsset.created_at.desc())).all()
+    out = []
+    for m in rows:
+        out.append(MediaOut(
+            id=m.id, farmhouse_id=fid, kind=m.kind, url=_media_url(fid, m.filename),
+            mime_type=m.mime_type, size_bytes=m.size_bytes, created_at=m.created_at
+        ))
+    return out
+
+
+@app.post("/farmhouses/{fid}/media", response_model=List[MediaOut], status_code=201)
+def upload_media(
+    fid: int,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    fh = db.get(Farmhouse, fid)
+    if not fh:
+        raise HTTPException(status_code=404, detail="Farmhouse not found")
+
+    # Allow owner for their own farmhouse, OR admin for any farmhouse
+    if current.role == "owner" and fh.owner_id != current.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    allowed_prefix = ("image/", "video/")
+    saved: List[MediaOut] = []
+    dest_dir = os.path.join(UPLOAD_DIR, f"farmhouse_{fid}")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    for up in files:
+        if not up.content_type or not up.content_type.startswith(allowed_prefix):
+            raise HTTPException(status_code=400, detail=f"Unsupported content type: {up.content_type}")
+
+        kind = "image" if up.content_type.startswith("image/") else "video"
+        limit_mb = MAX_IMAGE_MB if kind == "image" else MAX_VIDEO_MB
+        byte_limit = limit_mb * 1024 * 1024
+
+        ext = pathlib.Path(up.filename or "").suffix.lower() or ""
+        fname = f"{uuid.uuid4().hex}{ext}"
+        fpath = os.path.join(dest_dir, fname)
+
+        size = 0
+        try:
+            with open(fpath, "wb") as out:
+                while True:
+                    chunk = up.file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > byte_limit:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"{kind.capitalize()} exceeds {limit_mb} MB limit"
+                        )
+                    out.write(chunk)
+        except HTTPException:
+            # remove partial file if limit exceeded
+            if os.path.exists(fpath):
+                try: os.remove(fpath)
+                except: pass
+            raise
+
+        rec = MediaAsset(
+            farmhouse_id=fid,
+            kind=kind,
+            filename=fname,
+            mime_type=up.content_type or "application/octet-stream",
+            size_bytes=size,
+        )
+        db.add(rec); db.flush()
+
+        saved.append(MediaOut(
+            id=rec.id, farmhouse_id=fid, kind=kind, url=_media_url(fid, fname),
+            mime_type=rec.mime_type, size_bytes=size, created_at=datetime.utcnow()
+        ))
+
+    db.commit()
+    return saved
+
+@app.delete("/farmhouses/{fid}/media/{mid}", status_code=204)
+def delete_media(
+    fid: int,
+    mid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    asset = db.get(MediaAsset, mid)
+    if not asset or asset.farmhouse_id != fid:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    fh = db.get(Farmhouse, fid)
+    if not fh:
+        raise HTTPException(status_code=404, detail="Farmhouse not found")
+
+    # Owner can delete their own media; admin can delete anything
+    if current.role == "owner" and fh.owner_id != current.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    fpath = os.path.join(UPLOAD_DIR, f"farmhouse_{fid}", asset.filename)
+    try:
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    except Exception:
+        # If file removal fails, still remove DB row to avoid dangling entries
+        pass
+
+    db.delete(asset)
+    db.commit()

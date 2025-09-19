@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 
 /* ===== Utilities ===== */
@@ -47,13 +48,16 @@ const ICON = {
 /* ===== Fetch wrapper ===== */
 function apiFetch(path, opts = {}){
   const token = localStorage.getItem("token");
+  const headers = { ...(opts.headers || {}) };
+  const isForm = opts.body instanceof FormData;
+  if (!isForm && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   return fetch(`${API}${path}`, {
     ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(opts.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers
   }).then(async (r) => {
     if (r.status === 401 || r.status === 403) {
       try { const err = await r.json(); console.warn(err?.detail || "Auth error"); } catch {}
@@ -118,6 +122,14 @@ function Login({ onLogin }){
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.role);
       localStorage.setItem("email", data.email);
+      apiFetch("/me").then(me => {
+        localStorage.setItem("username", me.username);
+        onLogin({ role: data.role });
+      }).catch(() => {
+        // fallback if /me fails
+        localStorage.setItem("username", data.email?.split("@")?.[0] || "user");
+        onLogin({ role: data.role });
+      });
       setMsg({ type: "ok", text: "Signed in successfully. Redirecting…" });
       setTimeout(() => onLogin({ role: data.role }), 800);
     } catch {
@@ -164,10 +176,13 @@ function Login({ onLogin }){
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 function Calendar({ fid, year, month, editable }){
   const { days } = useMonth(year, month);
+  const role = typeof window !== "undefined" ? localStorage.getItem("role") : "owner";
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [map, setMap] = useState({}); // key: YYYY-MM-DD -> {is_booked, note}
+  const [map, setMap] = useState({}); // key: YYYY-MM-DD -> {is_booked, admin_booked, note}
   const [pending, setPending] = useState(null); // {key, date, next}
+  const [filter, setFilter] = useState(null);
+  const toggleFilter = (t) => setFilter(f => (f === t ? null : t));
 
   useEffect(() => {
     const start = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -184,15 +199,30 @@ function Calendar({ fid, year, month, editable }){
   const todayStr = ymdLocal(new Date());
 
   const toggleDay = (d) => {
-    if (!editable) return; const key = ymdLocal(d); if (key < todayStr) return; const prev = map[key]?.is_booked || false; setPending({ key, date:d, next:!prev });
-  };
+    if (!editable) return;
+    const key = ymdLocal(d);
+    if (key < todayStr) return;
+    const rec = map[key];
+    // Owners cannot change admin-booked dates
+    if (role === "owner" && rec?.admin_booked) return;
+    const prev = rec?.is_booked || false;
+    setPending({ key, date:d, next:!prev });
+    };
 
   const confirmChange = async () => {
     if (!pending) return; setBusy(true);
     try {
       const changes = [{ day: pending.key, is_booked: pending.next }];
       await apiFetch(`/farmhouses/${fid}/status`, { method:"PUT", body: JSON.stringify(changes) });
-      setMap(m => ({ ...m, [pending.key]: { day: pending.key, is_booked: pending.next } }));
+      setMap(m => ({
+        ...m,
+        [pending.key]: {
+        ...(m[pending.key] || {}),
+        day: pending.key,
+        is_booked: pending.next,
+        admin_booked: role === "admin" ? pending.next : false
+        }
+        }));
       setPending(null);
     } finally { setBusy(false); }
   };
@@ -202,12 +232,37 @@ function Calendar({ fid, year, month, editable }){
   const pad = days[0].getDay();
 
   return (
-    <div className="cal">
+    <div className="cal" data-filter={filter || undefined}>
       <div className="cal__legend">
-        <span className="chip chip--avail">Available</span>
-        <span className="chip chip--booked">Booked</span>
-        <span className="chip chip--today">Today</span>
+        <button
+            type="button"
+            aria-pressed={filter === "avail"}
+            className={cx("chip chip--btn chip--avail", filter === "avail" && "is-active")}
+            onClick={() => toggleFilter("avail")}
+            >
+            Available
+        </button>
+
+        <button
+            type="button"
+            aria-pressed={filter === "booked"}
+            className={cx("chip chip--btn chip--booked", filter === "booked" && "is-active")}
+            onClick={() => toggleFilter("booked")}
+            >
+            Booked
+        </button>
+        <button
+            type="button"
+            aria-pressed={filter === "admin"}
+            className={cx("chip chip--btn chip--admin", filter === "admin" && "is-active")}
+            onClick={() => toggleFilter("admin")}
+            >
+            Admin booked
+        </button>
+
+        {/* Removed Today button */}
       </div>
+
 
       {(busy || loading) && (
         <div className="cal__saving">
@@ -221,7 +276,9 @@ function Calendar({ fid, year, month, editable }){
         {Array.from({ length: pad }).map((_, i) => <div key={`pad${i}`} />)}
         {days.map((d, idx) => {
           const key = ymdLocal(d);
-          const booked = map[key]?.is_booked || false;
+          const rec = map[key] || {};
+          const adminBooked = !!rec.admin_booked;
+          const booked = !!rec.is_booked;
           const isToday = key === todayStr;
           const isPast = key < todayStr;
 
@@ -233,21 +290,21 @@ function Calendar({ fid, year, month, editable }){
             <button
               key={key}
               onClick={() => toggleDay(d)}
-              disabled={!editable || isPast}
+              disabled={!editable || isPast || (role === "owner" && adminBooked)}
               className={cx(
                 "day",
-                booked ? "day--booked" : "day--avail",
+                adminBooked ? "day--admin" : (booked ? "day--booked" : "day--avail"),
                 isToday && "day--today",
                 (!editable || isPast) && "day--disabled",
                 "glow-sm"
               )}
-              title={booked ? "Booked" : "Available"}
+              title={adminBooked ? "Admin booked" : (booked ? "Booked" : "Available")}
             >
               <div className="day__top">
                 <div className="day__date">{d.getDate()}</div>
-                {booked ? <span className="dot dot--booked" /> : <span className="dot dot--avail" />}
+                {adminBooked ? <span className="dot dot--admin" /> : (booked ? <span className="dot dot--booked" /> : <span className="dot dot--avail" />)}
               </div>
-              <div className="day__status">{booked ? "Booked" : "Available"}</div>
+              <div className="day__status">{adminBooked ? "Admin booked" : (booked ? "Booked" : "Available")}</div>
             </button>
           );
         })}
@@ -271,6 +328,87 @@ function Calendar({ fid, year, month, editable }){
   );
 }
 
+/* ====================== Media (owners upload, admins view) ====================== */
+function MediaGrid({ items, onDelete }){
+    if (!items?.length) return <div className="empty glow-sm">No media yet.</div>;
+    return (
+      <div className="gallery">
+        {items.map(m => (
+          <div key={m.id} className="thumb">
+            {m.kind === "image" ? (
+              <img src={API + m.url} alt="" loading="lazy" />
+            ) : (
+              <video src={API + m.url} controls preload="metadata" />
+            )}
+            {onDelete && (
+              <button className="del" title="Delete" onClick={() => onDelete(m)}>🗑</button>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  
+  function OwnerMediaPanel({ fid }){
+    const [items, setItems] = useState([]);
+    const [busy, setBusy] = useState(false);
+  
+    const load = () => apiFetch(`/farmhouses/${fid}/media`).then(setItems).catch(()=>setItems([]));
+    useEffect(() => { if (fid) load(); }, [fid]);
+  
+    // keep these in sync with backend defaults/env
+    const MAX_IMAGE_MB = 10, MAX_VIDEO_MB = 100;
+  
+    const onUpload = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+  
+      // quick client pre-check (server still enforces)
+      const tooBig = files.find(f => (f.type.startsWith("image/") && f.size > MAX_IMAGE_MB*1024*1024) ||
+                                     (f.type.startsWith("video/") && f.size > MAX_VIDEO_MB*1024*1024));
+      if (tooBig){
+        alert(`File too large. Images ≤ ${MAX_IMAGE_MB}MB, videos ≤ ${MAX_VIDEO_MB}MB.`);
+        e.target.value = ""; return;
+      }
+  
+      const fd = new FormData();
+      files.forEach(f => fd.append("files", f));
+      setBusy(true);
+      try { await apiFetch(`/farmhouses/${fid}/media`, { method: "POST", body: fd }); await load(); }
+      finally { setBusy(false); e.target.value = ""; }
+    };
+  
+    return (
+      <div className="card glow" style={{marginTop:16}}>
+        <div className="hstack" style={{justifyContent:"space-between"}}>
+          <h3 className="text-xl font-bold" style={{margin:0}}>Photos &amp; Videos</h3>
+          <label className="btn btn-primary">
+            Upload
+            <input type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={onUpload}/>
+          </label>
+        </div>
+        <div className="muted" style={{marginTop:6}}>Max image {MAX_IMAGE_MB}MB · Max video {MAX_VIDEO_MB}MB</div>
+        {busy && <div className="muted" style={{marginTop:8}}>Uploading…</div>}
+        <div style={{marginTop:12}}><MediaGrid items={items} /></div>
+      </div>
+    );
+  }
+  
+
+  function MediaViewer({ fid }){
+    const [items, setItems] = useState([]);
+    useEffect(() => { if (fid) apiFetch(`/farmhouses/${fid}/media`).then(setItems).catch(()=>setItems([])); }, [fid]);
+    return (
+      <div className="card glow" style={{marginTop:16}}>
+        <h3 className="text-xl font-bold" style={{marginTop:0}}>Photos &amp; Videos</h3>
+        <div style={{marginTop:12}}>
+          <MediaGrid items={items} />
+        </div>
+      </div>
+    );
+  }
+  
+
 /* ====================== Admin: Owners (pagination + edit) ====================== */
 function AdminOwnersPage(){
   const [rows, setRows] = useState([]);
@@ -282,6 +420,35 @@ function AdminOwnersPage(){
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
+// Max sizes (keep in sync with backend env)
+  const MAX_IMAGE_MB = 10, MAX_VIDEO_MB = 100;
+
+  const uploadOwnerMedia = async (fid, evt) => {
+    const files = Array.from(evt.target.files || []);
+    if (!files.length) return;
+
+    const tooBig = files.find(f =>
+        (f.type.startsWith("image/") && f.size > MAX_IMAGE_MB * 1024 * 1024) ||
+        (f.type.startsWith("video/") && f.size > MAX_VIDEO_MB * 1024 * 1024)
+    );
+    if (tooBig){
+        alert(`File too large. Images ≤ ${MAX_IMAGE_MB}MB, videos ≤ ${MAX_VIDEO_MB}MB.`);
+        evt.target.value = ""; return;
+    }
+
+    const fd = new FormData();
+    files.forEach(f => fd.append("files", f));
+
+    setBusy(true);
+    try{
+        await apiFetch(`/farmhouses/${fid}/media`, { method: "POST", body: fd });
+        evt.target.value = "";
+        const items = await apiFetch(`/farmhouses/${fid}/media`).catch(() => []);
+        setMediaFor(s => ({ ...s, byFarm: { ...(s?.byFarm||{}), [fid]: items } }));
+    } finally {
+        setBusy(false);
+    }
+  };
 
   const load = async (p = page, ps = pageSize) => {
     const res = await apiFetch(`/admin/owners?page=${p}&page_size=${ps}`);
@@ -314,6 +481,27 @@ function AdminOwnersPage(){
 
   const start = total ? (page - 1) * pageSize + 1 : 0;
   const end   = total ? start + rows.length - 1 : 0;
+  const [mediaFor, setMediaFor] = useState(null); // { ownerId, username, farms: [...], byFarm: { [fid]: items[] } }
+
+  const openManageMedia = (row) => {
+    const byFarm = {};
+    setMediaFor({ ownerId: row.id, username: row.username, farms: row.farmhouses || [], byFarm });
+    // load each farmhouse media
+    (row.farmhouses || []).forEach(async (f) => {
+      const items = await apiFetch(`/farmhouses/${f.id}/media`).catch(() => []);
+      setMediaFor((s) => ({ ...s, byFarm: { ...(s?.byFarm||{}), [f.id]: items } }));
+    });
+  };
+  
+  const closeManageMedia = () => setMediaFor(null);
+  
+  const deleteOwnerMedia = async (fid, mid) => {
+    if (!confirm("Delete this media?")) return;
+    await apiFetch(`/farmhouses/${fid}/media/${mid}`, { method: "DELETE" });
+    const items = await apiFetch(`/farmhouses/${fid}/media`).catch(() => []);
+    setMediaFor((s) => ({ ...s, byFarm: { ...(s?.byFarm||{}), [fid]: items } }));
+  };
+  
 
   return (
     <div className="shell">
@@ -375,6 +563,7 @@ function AdminOwnersPage(){
                       <button className="btn" onClick={()=>setActive(r.id, !r.is_active)}>{r.is_active ? "Disable" : "Enable"}</button>
                       <button className="btn" onClick={()=>openEdit(r)}>Edit contact</button>
                       <button className="btn btn-primary" onClick={()=>openReset(r)}>Reset Password</button>
+                      <button className="btn btn-danger" onClick={()=>openManageMedia(r)}>Manage media</button>
                     </div>
                   </td>
                 </tr>
@@ -396,6 +585,45 @@ function AdminOwnersPage(){
               <button className="btn btn-primary" onClick={doReset}>Save</button>
             </div>
           </div>
+        </div>
+      )}
+      {mediaFor && (
+        <div className="modal" onClick={closeManageMedia}>
+            <div className="modal-card" onClick={(e)=>e.stopPropagation()}>
+            <h3 className="text-xl font-bold" style={{marginTop:0}}>
+                Media — {mediaFor.username}
+            </h3>
+
+            {(!mediaFor.farms || mediaFor.farms.length === 0) ? (
+                <div className="empty glow-sm" style={{marginTop:8}}>No farmhouses for this owner.</div>
+            ) : (
+                <div className="space-y-4" style={{marginTop:8}}>
+                {mediaFor.farms.map(f => (
+                    <div key={f.id} className="card glow">
+                    <div className="hstack" style={{justifyContent:"space-between"}}>
+                        <div><b>{f.name}</b>{f.size ? ` (${f.size})` : ""}{f.location ? ` @ ${f.location}` : ""}</div>
+                        <label className="btn btn-primary">
+                        Upload
+                        <input type="file" accept="image/*,video/*" multiple style={{display:"none"}}
+                                onChange={(e)=>uploadOwnerMedia(f.id, e)} />
+                        </label>
+                    </div>
+                    <div className="muted" style={{marginTop:6}}>Max image {MAX_IMAGE_MB}MB · Max video {MAX_VIDEO_MB}MB</div>
+                    <div style={{marginTop:10}}>
+                        <MediaGrid
+                        items={mediaFor.byFarm?.[f.id] || []}
+                        onDelete={(m)=>deleteOwnerMedia(f.id, m.id)}
+                        />
+                    </div>
+                    </div>
+                ))}
+                </div>
+            )}
+
+            <div className="hstack" style={{justifyContent:"flex-end", marginTop:12}}>
+                <button className="btn" onClick={closeManageMedia}>Close</button>
+            </div>
+            </div>
         </div>
       )}
 
@@ -500,23 +728,54 @@ function OwnerPage(){
   useEffect(()=>{ apiFetch("/me/farmhouses").then(setFarms); }, []);
   useEffect(()=>{ if(farms.length) setSel(farms[0].id); }, [farms]);
 
+  // current farm
+  const currentFarm = useMemo(
+    () => (farms && farms.length ? (farms.find(f => f.id === sel) ?? farms[0]) : null),
+    [farms, sel]
+  );
+  useEffect(() => {
+    if (!sel && currentFarm) setSel(currentFarm.id);
+  }, [currentFarm, sel, setSel]);
+
   return (
     <div className="shell">
       <div className="page-head">
-        <h1 className="text-xl font-bold">My Farmhouse Calendar</h1>
+        <h1 className="text-xl font-bold">
+          {(currentFarm ? `${currentFarm.name} Calendar` : "My Farmhouse Calendar").toUpperCase()}
+        </h1>
         <p className="muted">Quickly toggle availability for your property.</p>
       </div>
+
       <div className="hstack">
-        <select className="select" value={sel||""} onChange={(e)=>setSel(Number(e.target.value))}>
-          {farms.map(f=> <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        <input className="input" style={{width:120}} type="number" value={year} onChange={e=>setYear(Number(e.target.value))}/>
-        <select className="select" style={{width:160}} value={month} onChange={(e)=>setMonth(Number(e.target.value))}>
-          {MONTHS.map((m, i) => (<option key={m} value={i+1}>{m}</option>))}
+        {/* removed farmhouse <select /> */}
+        <input
+          className="input"
+          style={{ width: 120 }}
+          type="number"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+        />
+        <select
+          className="select"
+          style={{ width: 160 }}
+          value={month}
+          onChange={(e) => setMonth(Number(e.target.value))}
+        >
+          {MONTHS.map((m, i) => (
+            <option key={m} value={i + 1}>{m}</option>
+          ))}
         </select>
       </div>
-      <div style={{marginTop:12}}>
-        {sel ? <Calendar fid={sel} year={year} month={month} editable={true} /> : <div className="chip">No farmhouses found.</div>}
+
+      <div style={{ marginTop: 12 }}>
+        {currentFarm ? (
+          <>
+            <Calendar fid={currentFarm.id} year={year} month={month} editable={true} />
+            <OwnerMediaPanel fid={currentFarm.id} />
+          </>
+        ) : (
+          <div className="chip">No farmhouses found.</div>
+        )}
       </div>
     </div>
   );
@@ -585,12 +844,10 @@ function AdminPage(){
               <div className="filters__row">
                 {/* Date */}
                 <div className="filters__item">
-                  <span className="filters__icon" aria-hidden>📅</span>
                   <input className="input input--pill input--icon" type="date" placeholder="dd/mm/yyyy" value={availDate} onChange={(e)=>setAvailDate(e.target.value)} title="Only show farmhouses available on this date" />
                 </div>
                 {/* Location */}
                 <div className="filters__item">
-                  <span className="filters__icon" aria-hidden>📍</span>
                   <select className="select input--pill input--icon" value={loc} onChange={(e)=>setLoc(e.target.value)} title="Location">
                     <option value="">All locations</option>
                     {locations.map(L => <option key={L} value={L}>{L}</option>)}
@@ -623,7 +880,14 @@ function AdminPage(){
             </div>
 
             <div style={{marginTop:12}}>
-              {sel ? (<Calendar fid={sel} year={year} month={month} editable={false} />) : (<div className="empty glow-sm">No farmhouses match the filters.</div>)}
+              {sel ? (
+                <>
+                  <Calendar fid={sel} year={year} month={month} editable={true} />
+                  <MediaViewer fid={sel} />
+                </>
+              ) : (
+                <div className="empty glow-sm">No farmhouses match the filters.</div>
+              )}
             </div>
           </div>
         )}
@@ -642,12 +906,14 @@ export default function App(){
   const AppHeader = (
     <header className="appbar glass">
       <div className="appbar__inner">
-        <div className="brand">
-          Farmhouse Booking
-        </div>
+        <div className="brand">Farmhouse Booking</div>
         <div className="space-x-3" style={{display:"flex", alignItems:"center"}}>
           <ThemeToggle />
-          {role && <span className="text-sm userchip">{localStorage.getItem("email")} [{role}]</span>}
+          {role && (
+            <span className="text-sm userchip">
+              {localStorage.getItem("username") || localStorage.getItem("email")?.split("@")[0] || "user"} [{role}]
+            </span>
+          )}
           {role && <button className="btn" onClick={logout}>{ICON.logout} Logout</button>}
         </div>
       </div>
@@ -676,3 +942,4 @@ export default function App(){
     </>
   );
 }
+    

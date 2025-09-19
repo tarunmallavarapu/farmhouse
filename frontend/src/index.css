@@ -1,8 +1,10 @@
 
+/* ===== Theme tokens ===== */
 :root{
   --bg:#0b1020; --card:#0d1228; --surface:#0f172a; --border:#1e2742; --text:#e8ecf7; --muted:#a4aec3;
   --brand:#3b82f6; --brand-2:#60a5fa; --accent:#22d3ee;
   --avail-bg:#1e40af; --avail-border:#1e3a8a; --booked-bg:#b91c1c; --booked-border:#7f1d1d; --today-ring:#facc15;
+  --admin-bg:#166534; --admin-border:#14532d;
   --ok-bg:#083344; --ok-tint:#a5f3fc; --bad-bg:#3b0a0a; --bad-tint:#fecaca;
   --shadow:0 10px 30px rgba(2,6,23,.35); --shadow-lg:0 18px 50px rgba(2,6,23,.5);
   --ring: 0 0 0 3px rgba(59,130,246,.15);
@@ -165,7 +167,7 @@ body{
 }
 .input:focus, .select:focus{ border-color: rgba(59,130,246,.55); box-shadow: var(--ring); }
 .input--pill, .select.input--pill{ border-radius:999px !important; height:42px; }
-.input--icon{ padding-left: 2rem !important; }
+.input--icon{ padding-left: 2 rem !important; }
 
 /* Form bits */
 .field{ display:flex; flex-direction:column; gap:6px; }
@@ -237,10 +239,102 @@ body{
 /* Calendar */
 .cal{ position:relative; display:grid; gap:16px; }
 .cal__legend{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.chip{ padding:.25rem .6rem; border:1px solid var(--border); border-radius:999px; color:var(--muted); background:linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--card); }
+
+/* Base chip */
+.chip{
+  padding:.25rem .6rem; border:1px solid var(--border); border-radius:999px;
+  color:var(--muted); background:linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--card);
+}
 .chip--avail{ color:#93c5fd; border-color:#1e3a8a; }
 .chip--booked{ color:#fecaca; border-color:#7f1d1d; }
 .chip--today{ color:var(--today-ring); border-color:var(--today-ring); }
+.chip--admin{ color:#bbf7d0; border-color:var(--admin-border); }
+
+
+/* Legend chips behave like dark buttons */
+.chip.chip--btn{
+  appearance:none;
+  cursor:pointer; user-select:none;
+  border-width:2px;
+  padding:.5rem 1rem;
+  font-weight:900;
+  transition: transform .1s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease;
+}
+/* darker look + subtle fill */
+.chip.chip--btn.chip--avail{
+  border-color:#143b8f;
+  color:#7fb3ff;
+  background: rgba(20,59,143,.18);
+}
+.chip.chip--btn.chip--booked{
+  border-color:#5f0f0f;
+  color:#f5a9a9;
+  background: rgba(95,15,15,.18);
+}
+.chip.chip--btn.chip--admin{
+  border-color:#14532d;
+  color:#86efac;
+  background: rgba(20,83,45,.18);
+}
+.chip.chip--btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow); }
+.chip.chip--btn.chip--avail:hover{ background: rgba(20,59,143,.28); }
+.chip.chip--btn.chip--booked:hover{ background: rgba(95,15,15,.28); }
+.chip.chip--btn.chip--admin:hover{ background: rgba(20,83,45,.28); }
+
+/* Active (selected) = filled buttons */
+.chip.chip--btn.is-active.chip--avail{
+  background:#1e3a8a; border-color:#1e3a8a; color:#fff; box-shadow:0 0 0 3px rgba(30,58,138,.25);
+}
+.chip.chip--btn.is-active.chip--booked{
+  background:#7f1d1d; border-color:#7f1d1d; color:#fff; box-shadow:0 0 0 3px rgba(127,29,29,.25);
+}
+.chip.chip--btn.is-active.chip--admin{
+  background:#14532d; border-color:#14532d; color:#fff; box-shadow:0 0 0 3px rgba(20,83,45,.25);
+}
+.chip.chip--btn:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(59,130,246,.28); }
+
+/* Light-mode tweaks */
+:root[data-theme="light"] .chip.chip--btn.chip--avail{ color:#1e3a8a; background:rgba(30,58,138,.08); }
+:root[data-theme="light"] .chip.chip--btn.chip--booked{ color:#7f1d1d; background:rgba(127,29,29,.08); }
+:root[data-theme="light"] .chip.chip--btn.chip--admin{ color:#14532d; background:rgba(20,83,45,.10); }
+:root[data-theme="light"] .chip.chip--btn.is-active.chip--avail{ background:#1e3a8a; color:#fff; }
+:root[data-theme="light"] .chip.chip--btn.is-active.chip--booked{ background:#7f1d1d; color:#fff; }
+:root[data-theme="light"] .chip.chip--btn.is-active.chip--admin{ background:#14532d; color:#fff; }
+
+/* Visual feedback when a filter is active */
+.chip.is-active{ box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+
+/* Filter highlight behavior */
+.cal[data-filter="avail"] .cal__grid .day{ opacity:.38; filter: grayscale(.06) brightness(.92); }
+.cal[data-filter="avail"] .cal__grid .day--avail{
+  opacity:1; filter:none; transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.cal[data-filter="booked"] .cal__grid .day{ opacity:.38; filter: grayscale(.06) brightness(.92); }
+.cal[data-filter="booked"] .cal__grid .day--booked{
+  opacity:1; filter:none; transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.cal[data-filter="admin"] .cal__grid .day{ opacity:.38; filter: grayscale(.06) brightness(.92); }
+.cal[data-filter="admin"] .cal__grid .day--admin{
+  opacity:1; filter:none; transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Make today's date white in the grid (regardless of status) */
+.day--today{
+  background:#ffffff !important;
+  color:#0b1220 !important;
+  border-color:#e5e7eb !important;
+  box-shadow: var(--shadow) !important; /* keep clean white; no yellow ring */
+}
+:root[data-theme="light"] .day--today{
+  background:#ffffff !important;
+  color:#0b1220 !important;
+  border-color:#e5e7eb !important;
+  box-shadow: var(--shadow) !important;
+}
+
 .cal__saving{ position:sticky; top:0; align-self:start; background:rgba(0,0,0,.12); backdrop-filter: blur(6px); padding:.38rem .65rem; border-radius:8px; width:max-content; z-index:2; border:1px dashed var(--border); }
 :root[data-theme="light"] .cal__saving{ background: rgba(255,255,255,.7); }
 
@@ -265,10 +359,12 @@ body{
 .day:focus{ outline:none; box-shadow:0 0 0 2px var(--avail-border) inset, var(--shadow); }
 .day--avail{ background: linear-gradient(180deg, rgba(30,64,175,.12), rgba(30,58,138,.06)), var(--avail-bg); border-color: var(--avail-border); color:#fff; }
 .day--booked{ background: linear-gradient(180deg, rgba(185,28,28,.12), rgba(127,29,29,.06)), var(--booked-bg); border-color: var(--booked-border); color:#fff; }
-.day--today{ box-shadow: 0 0 0 2px var(--today-ring) inset, var(--shadow); }
+/* (no yellow ring; handled above) */
+.day--admin{ background: linear-gradient(180deg, rgba(22,101,52,.12), rgba(20,83,45,.06)), var(--admin-bg); border-color: var(--admin-border); color:#fff; }
 .day--disabled, .day:disabled{ cursor:not-allowed; opacity:.92; pointer-events:none; transform:none; filter: grayscale(.1) brightness(.9); }
 .day__date{ font-weight:900; font-size:1.125rem; margin-bottom:.25rem; }
 .day__status{ font-size:.82rem; opacity:.95; text-transform:uppercase; letter-spacing:.04em; }
+.day__top{ display:flex; align-items:center; justify-content:space-between; }
 @media (max-width: 780px){ .day{ height:88px; padding:10px; } .day__date{ font-size:1rem; } }
 
 /* Modal */
@@ -326,4 +422,77 @@ body{
 .hstack{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 .grid{ display:grid; gap:12px; } .grid-2{ grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 860px){ .grid-2, .grid-3{ grid-template-columns: 1fr; } }
+
+/* ===== New: Status pills ===== */
+.pill{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.2rem .55rem; border-radius:999px; font-weight:800; font-size:.78rem;
+  border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--surface);
+}
+.pill--ok{ background: var(--ok-bg); color: var(--ok-tint); border-color:#155e75; }
+.pill--bad{ background: var(--bad-bg); color: var(--bad-tint); border-color:#7f1d1d; }
+
+/* ===== New: Notices for create owner form ===== */
+.notice{
+  padding:.65rem .8rem; border-radius:12px; border:1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--card);
+}
+.notice[data-type="ok"]{ background: var(--ok-bg); color: var(--ok-tint); border-color:#155e75; }
+.notice[data-type="err"]{ background: var(--bad-bg); color: var(--bad-tint); border-color:#7f1d1d; }
+
+/* ===== New: Subtle glows & empty state ===== */
+.glow-sm{ box-shadow: var(--shadow); }
+.empty{
+  padding:18px; border:1px dashed var(--border); border-radius:14px;
+  color:var(--muted); text-align:center; background:linear-gradient(180deg, rgba(255,255,255,.02), transparent), var(--surface);
+}
+
+/* ===== New: Skeleton tiles ===== */
+.skeleton{ position:relative; overflow:hidden; background:rgba(255,255,255,.06); border-radius:12px; }
+:root[data-theme="light"] .skeleton{ background: rgba(2,6,23,.06); }
+.skeleton::after{
+  content:""; position:absolute; inset:0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  transform: translateX(-100%); animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer{ 100%{ transform: translateX(100%); } }
+.skeleton--tile{ height:104px; border:1px solid var(--border); }
+@media (max-width: 780px){ .skeleton--tile{ height:88px; } }
+
+/* ===== New: Availability dots (in calendar tiles) ===== */
+.dot{ width:10px; height:10px; border-radius:999px; display:inline-block; box-shadow: 0 0 0 2px rgba(0,0,0,.1) inset; }
+.dot--avail{ background:#93c5fd; }
+.dot--booked{ background:#fecaca; }
+.dot--admin{ background:#bbf7d0; }
+
+/* ===== New: Media gallery ===== */
+.gallery{
+  display:grid; gap:10px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+.thumb{
+  position:relative; overflow:hidden; border-radius:12px; border:1px solid var(--border);
+  background: var(--card); aspect-ratio: 4/3;
+  box-shadow: var(--shadow);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .15s ease, filter .15s ease;
+}
+.thumb img, .thumb video{ width:100%; height:100%; object-fit:cover; display:block; }
+.thumb:hover{ transform: translateY(-2px); box-shadow: var(--shadow-lg); filter: saturate(1.04); }
+
+/* Light-mode tweaks for gallery */
+:root[data-theme="light"] .thumb{ background:#fff; }
+
+.thumb .del {
+  position: absolute;
+  top: 6px; right: 6px;
+  padding: .3rem .45rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.45);
+  color: #fff; font-weight:800; cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+:root[data-theme="light"] .thumb .del { background: rgba(0,0,0,.35); }
+.thumb .del:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+
 
