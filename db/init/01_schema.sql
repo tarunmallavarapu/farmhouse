@@ -1,3 +1,4 @@
+
 -- runs automatically on first DB init
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
@@ -28,8 +29,21 @@ CREATE TABLE IF NOT EXISTS day_status (
   farmhouse_id  INTEGER NOT NULL REFERENCES farmhouses(id) ON DELETE CASCADE,
   day           DATE NOT NULL,
   is_booked     BOOLEAN NOT NULL DEFAULT FALSE,
+  admin_booked  BOOLEAN NOT NULL DEFAULT FALSE,
   note          TEXT,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(farmhouse_id, day)
 );
 CREATE INDEX IF NOT EXISTS idx_day_status_farmhouse_day ON day_status(farmhouse_id, day);
+
+CREATE TABLE IF NOT EXISTS media_assets (
+  id           SERIAL PRIMARY KEY,
+  farmhouse_id INTEGER NOT NULL REFERENCES farmhouses(id) ON DELETE CASCADE,
+  kind         TEXT NOT NULL CHECK (kind IN ('image','video')),
+  filename     TEXT NOT NULL,                   
+  mime_type    TEXT NOT NULL,
+  size_bytes   BIGINT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_media_assets_farmhouse ON media_assets(farmhouse_id);
+CREATE INDEX IF NOT EXISTS idx_media_assets_created   ON media_assets(created_at DESC);
