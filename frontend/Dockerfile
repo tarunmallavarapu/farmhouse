@@ -1,13 +1,22 @@
 # ---------- Build stage ----------
-    FROM node:20-alpine AS builder
-    WORKDIR /app
-    COPY frontend/package*.json ./
-    # if there's no lockfile, this falls back to npm install
-    RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-    COPY frontend/ ./
-    ARG VITE_API_BASE=/api
-    ENV VITE_API_URL=$VITE_API_BASE
-    RUN npm run build
+  FROM node:20-alpine AS builder
+  WORKDIR /app
+  
+  # copy lockfiles first
+  COPY frontend/package*.json ./
+  
+  # ensure devDependencies are installed (vite lives here)
+  # (npm ci installs dev deps unless NODE_ENV=production)
+  ENV NODE_ENV=development
+  RUN npm ci --include=dev
+  
+  # now copy the rest and build
+  COPY frontend/ ./
+  # pass your Vite env at build-time if needed
+  ARG VITE_API_BASE=/api
+  ENV VITE_API_URL=$VITE_API_BASE
+  RUN npm run build
+  
     
 # ---------- Serve stage ----------
     FROM nginx:1.27-alpine

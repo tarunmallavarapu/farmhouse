@@ -19,6 +19,7 @@ with SessionLocal() as db:
             password_hash=hash_password(ADMIN_PASSWORD),  # plaintext per current setup
             role="admin",
             is_active=True,
+            phone="+10000000000", 
         ))
         db.commit()
         print("Admin created: username=admin, email=admin@farm.local, password=Admin@123")
