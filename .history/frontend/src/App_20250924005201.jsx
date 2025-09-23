@@ -395,7 +395,7 @@ function MediaGrid({ items, onDelete }){
         </div>
         <div className="muted" style={{marginTop:6}}>Max image {MAX_IMAGE_MB}MB · Max video {MAX_VIDEO_MB}MB</div>
         {busy && <div className="muted" style={{marginTop:8}}>Uploading…</div>}
-        <div style={{marginTop:12}}><MediaGrid items={items} onDelete={onDelete} /></div>
+        <div style={{marginTop:12}}><MediaGrid items={items} /></div>
       </div>
     );
   }

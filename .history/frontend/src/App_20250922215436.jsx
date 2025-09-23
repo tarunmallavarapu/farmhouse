@@ -377,12 +377,6 @@ function MediaGrid({ items, onDelete }){
       try { await apiFetch(`/farmhouses/${fid}/media`, { method: "POST", body: fd }); await load(); }
       finally { setBusy(false); e.target.value = ""; }
     };
-
-    const onDelete = async (m) => {
-      if (!confirm("Delete this media?")) return;
-      await apiFetch(`/farmhouses/${fid}/media/${m.id}`, { method:"DELETE" });
-      await load();
-    };
   
     return (
       <div className="card glow" style={{marginTop:16}}>
@@ -395,7 +389,7 @@ function MediaGrid({ items, onDelete }){
         </div>
         <div className="muted" style={{marginTop:6}}>Max image {MAX_IMAGE_MB}MB · Max video {MAX_VIDEO_MB}MB</div>
         {busy && <div className="muted" style={{marginTop:8}}>Uploading…</div>}
-        <div style={{marginTop:12}}><MediaGrid items={items} onDelete={onDelete} /></div>
+        <div style={{marginTop:12}}><MediaGrid items={items} /></div>
       </div>
     );
   }
